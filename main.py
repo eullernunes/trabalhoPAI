@@ -7,6 +7,9 @@ from scipy.io import loadmat
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import cv2
+from skimage.feature import graycomatrix, graycoprops
+from skimage import exposure
 
 # Variável global para armazenar o arquivo .mat carregado e a imagem atual
 data = None
@@ -26,13 +29,13 @@ def exibir_histograma():
 
     # Converte a imagem para tons de cinza se estiver em outro modo
     gray_img = img.convert('L')
-    
+
     # Calcula o histograma da imagem em tons de cinza
     hist = gray_img.histogram()
-    
+
     # Limpa o frame_histograma antes de plotar um novo histograma
-    #limpar_histograma()
-    
+    limpar_histograma()
+
     # Cria e exibe o gráfico do histograma
     fig, ax = plt.subplots()
     ax.plot(hist, color='black')
@@ -72,12 +75,12 @@ def carregar_imagem_selecionada():
         indice_paciente = int(selected_patient.get().split()[-1])
         indice_imagem = int(selected_image.get().split()[-1])
         img_data = data[indice_paciente]['images'][indice_imagem]
-        
+
         # Convertendo a imagem do .mat para PIL
         img = Image.fromarray(img_data)
         img = img.resize((400, 300))
         img_tk = ImageTk.PhotoImage(img)
-        
+
         # Limpa o histograma e atualiza a exibição no frame de imagem
         limpar_histograma()
         label_imagem.config(image=img_tk)
@@ -85,7 +88,55 @@ def carregar_imagem_selecionada():
     except Exception as e:
         messagebox.showerror("Erro", f"Erro ao carregar a imagem: {e}")
 
-# Função para carregar imagem comum
+# Função para exibir a GLCM como uma imagem
+# Função para calcular a GLCM e extrair os descritores de textura
+def calcular_glcm(img_array):
+    # Converte a imagem para tons de cinza (se necessário)
+    if len(img_array.shape) == 3:
+        img_array = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+
+    # Ajuste o contraste da imagem para melhorar a visualização da GLCM
+    img_array = exposure.rescale_intensity(img_array, in_range='image', out_range=(0, 255))
+
+    # Converte a imagem para uint8, pois o graycomatrix não suporta imagens float
+    img_array = img_array.astype(np.uint8)
+
+    # Calcula a matriz de co-ocorrência para distâncias e ângulos específicos
+    glcm = graycomatrix(img_array, distances=[1, 2, 3], angles=[0, np.pi / 4, np.pi / 2, 3 * np.pi / 4], levels=256,
+                        symmetric=True, normed=True)
+    img_array = cv2.equalizeHist(img_array)
+
+    # Extrai os descritores de textura
+    contraste = graycoprops(glcm, 'contrast')[0, 0]
+    homogeneidade = graycoprops(glcm, 'homogeneity')[0, 0]
+    energia = graycoprops(glcm, 'energy')[0, 0]
+    correlacao = graycoprops(glcm, 'correlation')[0, 0]
+
+    # Exibe os valores calculados em uma janela de diálogo
+    messagebox.showinfo("Descritores de Textura",
+                        f"Contraste: {contraste}\n"
+                        f"Homogeneidade: {homogeneidade}\n"
+                        f"Energia: {energia}\n"
+                        f"Correlação: {correlacao}")
+
+    # Exibir a GLCM como uma imagem (matriz)
+    exibir_glcm(glcm)
+
+def exibir_glcm(glcm):
+    # Limpar o frame do histograma antes de exibir a GLCM
+    limpar_histograma()
+
+    # Exibir a GLCM usando matplotlib
+    fig, ax = plt.subplots()
+    ax.imshow(glcm[:, :, 0, 0], cmap='gray')  # Mostra a primeira matriz da GLCM
+    ax.set_title("Matriz de Co-ocorrência (GLCM)")
+    ax.set_xlabel("Nível de Cinza (i)")
+    ax.set_ylabel("Nível de Cinza (j)")
+
+    # Adiciona o gráfico ao frame de histograma usando FigureCanvasTkAgg
+    canvas = FigureCanvasTkAgg(fig, master=frame_histograma)
+    canvas.draw()
+    canvas.get_tk_widget().pack()
 def carregar_imagem():
     global img
     diretorio_atual = os.getcwd()
@@ -97,13 +148,15 @@ def carregar_imagem():
         img = Image.open(caminho_imagem)
         img = img.resize((400, 300))
         img_tk = ImageTk.PhotoImage(img)
-        
+
         # Limpa o histograma e atualiza a exibição no frame de imagem
         limpar_histograma()
         label_imagem.config(image=img_tk)
         label_imagem.image = img_tk
+
         ocultar_opcoes_mat()  # Oculta as opções do .mat
         mostrar_opcoes_imagem()  # Mostra as opções específicas para imagem comum
+
 
 # Função para mostrar as opções no menu lateral para arquivos .mat
 def mostrar_opcoes_mat():
@@ -114,6 +167,7 @@ def mostrar_opcoes_mat():
     btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
     btn_recortar_roi.pack(fill=X, padx=10, pady=10)
 
+
 # Função para mostrar as opções no menu lateral para imagens comuns
 def mostrar_opcoes_imagem():
     # Exibe as opções padrão e o novo botão "Selecionar Nova Imagem"
@@ -121,17 +175,63 @@ def mostrar_opcoes_imagem():
     btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
     btn_recortar_roi.pack(fill=X, padx=10, pady=10)
 
+
 # Função para ocultar as opções do arquivo .mat
 def ocultar_opcoes_mat():
     combo_paciente.pack_forget()
     combo_imagem.pack_forget()
     btn_carregar_imagem_selecionada.pack_forget()
 
+
 # Função para ocultar as opções da imagem comum
 def ocultar_opcoes_imagem():
     btn_selecionar_nova_imagem.pack_forget()
     btn_calcular_histograma.pack_forget()
     btn_recortar_roi.pack_forget()
+
+
+# Função para selecionar ROI (Região de Interesse)
+def selecionar_roi(imagem):
+    roi = cv2.selectROI("Selecione a ROI", imagem, fromCenter=False, showCrosshair=True)
+    cv2.destroyAllWindows()
+    return roi
+
+
+# Função para recortar a ROI e atualizar a imagem
+def recortar_roi():
+    global img
+    if img is None:
+        messagebox.showerror("Erro", "Nenhuma imagem carregada!")
+        return
+
+    # Converter a imagem PIL para um array do OpenCV (BGR)
+    img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+
+    # Chamar a função para selecionar a ROI
+    roi_coords = selecionar_roi(img_cv)
+    x, y, w, h = roi_coords
+
+    # Verificar se a ROI selecionada é válida
+    if w == 0 or h == 0:
+        messagebox.showerror("Erro", "Nenhuma ROI selecionada ou seleção inválida!")
+        return
+
+    # Recortar a imagem com base na ROI selecionada
+    roi_cropped = img_cv[int(y):int(y + h), int(x):int(x + w)]
+
+    # Atualizar a exibição da imagem na interface
+    img_cropped = Image.fromarray(cv2.cvtColor(roi_cropped, cv2.COLOR_BGR2RGB))
+    img_resized = img_cropped.resize((400, 300))
+    img = img_resized  # Atualizar a imagem global
+    img_tk = ImageTk.PhotoImage(img)
+    label_imagem.config(image=img_tk)
+    label_imagem.image = img_tk
+
+    # Limpar o histograma já que a imagem mudou
+    limpar_histograma()
+
+    # Calcular a GLCM e os descritores de textura para a ROI
+    calcular_glcm(roi_cropped)
 
 # Função para criar a janela principal
 def criar_janela():
@@ -141,7 +241,7 @@ def criar_janela():
     global selected_patient, selected_image
 
     # Configurações iniciais
-    janela = tb.Window(themename="cerculean")  
+    janela = tb.Window(themename="cerculean")
     janela.title("📷 PROCESSAMENTO DE IMAGENS 📷")
     janela.geometry("1000x600")
     janela.minsize(1000, 600)
@@ -153,7 +253,7 @@ def criar_janela():
     # Menu superior
     menu = Menu(janela)
     janela.config(menu=menu)
-    
+
     arquivo_menu = Menu(menu, tearoff=0)
     menu.add_cascade(label="Arquivo", menu=arquivo_menu)
     arquivo_menu.add_command(label="Carregar Imagem", command=carregar_imagem)
@@ -186,21 +286,25 @@ def criar_janela():
     # Combobox para seleção de paciente e imagem
     combo_paciente = tb.Combobox(frame_menu_lateral, textvariable=selected_patient)
     combo_imagem = tb.Combobox(frame_menu_lateral, textvariable=selected_image)
-    
+
     # Botão para carregar imagem selecionada
-    btn_carregar_imagem_selecionada = tb.Button(frame_menu_lateral, text="Carregar Imagem Selecionada", command=carregar_imagem_selecionada, bootstyle="primary")
-    
+    btn_carregar_imagem_selecionada = tb.Button(frame_menu_lateral, text="Carregar Imagem Selecionada",
+                                                command=carregar_imagem_selecionada, bootstyle="primary")
+
     # Botão para calcular histograma
-    btn_calcular_histograma = tb.Button(frame_menu_lateral, text="Calcular Histograma", command=exibir_histograma, bootstyle="info")
-    
+    btn_calcular_histograma = tb.Button(frame_menu_lateral, text="Calcular Histograma", command=exibir_histograma,
+                                        bootstyle="info")
+
     # Botão para recortar ROI
-    btn_recortar_roi = tb.Button(frame_menu_lateral, text="Recortar ROI", command=lambda: print("Recorte de ROI"), bootstyle="warning")
-    
+    btn_recortar_roi = tb.Button(frame_menu_lateral, text="Recortar ROI", command=recortar_roi, bootstyle="warning")
+
     # Novo botão para selecionar uma nova imagem
-    btn_selecionar_nova_imagem = tb.Button(frame_menu_lateral, text="Selecionar Nova Imagem", command=carregar_imagem, bootstyle="primary")
+    btn_selecionar_nova_imagem = tb.Button(frame_menu_lateral, text="Selecionar Nova Imagem", command=carregar_imagem,
+                                           bootstyle="primary")
 
     # Executando a janela
     janela.mainloop()
+
 
 # Iniciar a aplicação
 criar_janela()
