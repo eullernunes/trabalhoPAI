@@ -1,6 +1,7 @@
 import os
 from PIL import Image, ImageTk
 import ttkbootstrap as tb
+from skimage.measure import moments
 from ttkbootstrap.constants import *
 from tkinter import filedialog, messagebox, StringVar, Menu
 from scipy.io import loadmat
@@ -88,7 +89,6 @@ def carregar_imagem_selecionada():
     except Exception as e:
         messagebox.showerror("Erro", f"Erro ao carregar a imagem: {e}")
 
-# Função para exibir a GLCM como uma imagem
 # Função para calcular a GLCM e extrair os descritores de textura
 def calcular_glcm(img_array):
     # Converte a imagem para tons de cinza (se necessário)
@@ -137,6 +137,8 @@ def exibir_glcm(glcm):
     canvas = FigureCanvasTkAgg(fig, master=frame_histograma)
     canvas.draw()
     canvas.get_tk_widget().pack()
+
+# Função para carregar e exibir a imagem
 def carregar_imagem():
     global img
     diretorio_atual = os.getcwd()
@@ -157,45 +159,11 @@ def carregar_imagem():
         ocultar_opcoes_mat()  # Oculta as opções do .mat
         mostrar_opcoes_imagem()  # Mostra as opções específicas para imagem comum
 
-
-# Função para mostrar as opções no menu lateral para arquivos .mat
-def mostrar_opcoes_mat():
-    # Exibe as opções de paciente e imagem, além das opções padrão
-    combo_paciente.pack(fill=X, padx=10, pady=5)
-    combo_imagem.pack(fill=X, padx=10, pady=5)
-    btn_carregar_imagem_selecionada.pack(fill=X, padx=10, pady=10)
-    btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
-    btn_recortar_roi.pack(fill=X, padx=10, pady=10)
-
-
-# Função para mostrar as opções no menu lateral para imagens comuns
-def mostrar_opcoes_imagem():
-    # Exibe as opções padrão e o novo botão "Selecionar Nova Imagem"
-    btn_selecionar_nova_imagem.pack(fill=X, padx=10, pady=10)
-    btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
-    btn_recortar_roi.pack(fill=X, padx=10, pady=10)
-
-
-# Função para ocultar as opções do arquivo .mat
-def ocultar_opcoes_mat():
-    combo_paciente.pack_forget()
-    combo_imagem.pack_forget()
-    btn_carregar_imagem_selecionada.pack_forget()
-
-
-# Função para ocultar as opções da imagem comum
-def ocultar_opcoes_imagem():
-    btn_selecionar_nova_imagem.pack_forget()
-    btn_calcular_histograma.pack_forget()
-    btn_recortar_roi.pack_forget()
-
-
 # Função para selecionar ROI (Região de Interesse)
 def selecionar_roi(imagem):
     roi = cv2.selectROI("Selecione a ROI", imagem, fromCenter=False, showCrosshair=True)
     cv2.destroyAllWindows()
     return roi
-
 
 # Função para recortar a ROI e atualizar a imagem
 def recortar_roi():
@@ -233,11 +201,91 @@ def recortar_roi():
     # Calcular a GLCM e os descritores de textura para a ROI
     calcular_glcm(roi_cropped)
 
+# Função para mostrar as opções no menu lateral para arquivos .mat
+def mostrar_opcoes_mat():
+    # Exibe as opções de paciente e imagem, além das opções padrão
+    combo_paciente.pack(fill=X, padx=10, pady=5)
+    combo_imagem.pack(fill=X, padx=10, pady=5)
+    btn_carregar_imagem_selecionada.pack(fill=X, padx=10, pady=10)
+    btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
+    btn_recortar_roi.pack(fill=X, padx=10, pady=10)
+    btn_binarizar_imagem.pack(fill=X, padx=10, pady=10)
+
+
+# Função para calcular o centróide
+def centroid(moment):
+    if moment['m00'] != 0:
+        x_centroid = round(moment['m10'] / moment['m00'])
+        y_centroid = round(moment['m01'] / moment['m00'])
+        print(f"Centróide: ({x_centroid}, {y_centroid})")
+    else:
+        x_centroid, y_centroid = 0, 0
+        print("Centróide: (0, 0)")
+    return x_centroid, y_centroid
+
+# Função para binarizar a imagem
+def binaryImage():
+    global img
+    if img is None:
+        messagebox.showerror("Erro", "Nenhuma imagem carregada!")
+        return
+
+    # Verificar o tipo de imagem carregada e converter para grayscale
+    if img.mode != 'L':  # Se a imagem não estiver em tons de cinza, converte
+        img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
+    else:
+        img_cv = np.array(img)  # Se já estiver em grayscale, usa diretamente
+
+    # Aplicar adaptive threshold para binarização adaptativa
+    adaptive_bw_img = cv2.adaptiveThreshold(img_cv, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            cv2.THRESH_BINARY, 11, 2)
+    momentos = cv2.moments(adaptive_bw_img)
+    momentos_hu = cv2.HuMoments(momentos)
+    print("Momentos Invariantes de Hu:")
+    for i, hu in enumerate(momentos_hu):
+        print(f"Hu[{i + 1}] = {hu[0]}")
+    # Converter de volta para PIL para exibir na interface
+    bw_img_pil = Image.fromarray(adaptive_bw_img)
+    img_resized = bw_img_pil.resize((400, 300))
+    img_tk = ImageTk.PhotoImage(img_resized)
+
+    # Atualizar a imagem binária na interface
+    label_imagem.config(image=img_tk)
+    label_imagem.image = img_tk
+    momentos_hu_str = "\n".join([f"Hu[{i + 1}]: {momento[0]}" for i, momento in enumerate(momentos_hu)])
+    messagebox.showinfo("Momentos Invariantes de Hu", momentos_hu_str)
+    # Limpar o histograma, já que a imagem foi alterada
+    return momentos_hu
+    limpar_histograma()
+
+
+# Função para mostrar as opções no menu lateral para imagens comuns
+def mostrar_opcoes_imagem():
+    # Exibe as opções padrão e o novo botão "Selecionar Nova Imagem"
+    btn_selecionar_nova_imagem.pack(fill=X, padx=10, pady=10)
+    btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
+    btn_recortar_roi.pack(fill=X, padx=10, pady=10)
+    btn_binarizar_imagem.pack(fill=X, padx=10, pady=10)
+    btn_momentos_hu.pack(fill=X, padx=10, pady=10)
+
+# Função para ocultar as opções do arquivo .mat
+def ocultar_opcoes_mat():
+    combo_paciente.pack_forget()
+    combo_imagem.pack_forget()
+    btn_carregar_imagem_selecionada.pack_forget()
+
+
+# Função para ocultar as opções da imagem comum
+def ocultar_opcoes_imagem():
+    btn_selecionar_nova_imagem.pack_forget()
+    btn_calcular_histograma.pack_forget()
+    btn_recortar_roi.pack_forget()
+
 # Função para criar a janela principal
 def criar_janela():
     global frame_imagem, frame_histograma, label_imagem
     global combo_paciente, combo_imagem
-    global btn_carregar_imagem_selecionada, btn_calcular_histograma, btn_recortar_roi, btn_selecionar_nova_imagem
+    global btn_carregar_imagem_selecionada, btn_calcular_histograma, btn_recortar_roi, btn_selecionar_nova_imagem,btn_binarizar_imagem,btn_momentos_hu
     global selected_patient, selected_image
 
     # Configurações iniciais
@@ -302,9 +350,12 @@ def criar_janela():
     btn_selecionar_nova_imagem = tb.Button(frame_menu_lateral, text="Selecionar Nova Imagem", command=carregar_imagem,
                                            bootstyle="primary")
 
+    # Chamar a função de binarizar a imagem, você pode fazer isso no botão ou em outro ponto após carregar a imagem
+    btn_binarizar_imagem = tb.Button(frame_menu_lateral, text="Binarizar Imagem", command=binaryImage,
+                                     bootstyle="primary")
+
     # Executando a janela
     janela.mainloop()
-
 
 # Iniciar a aplicação
 criar_janela()
