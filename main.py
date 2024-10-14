@@ -1,11 +1,10 @@
 import os
-
-import cv2
 import numpy as np
 import tkinter as tk
-import ttkbootstrap as ttk,tb
+import ttkbootstrap as ttk
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import cv2
 from ttkbootstrap.constants import *
 from PIL import Image, ImageTk
 from tkinter import filedialog, messagebox
@@ -26,13 +25,9 @@ class App(ttk.Window):
         # Label superior
         self.label = ttk.Label(self, text="Image Processing", font=("Helvetica", 14))
         self.label.grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=20)
-        self.label_imagem= ttk.Label(self)
-        self.label_imagem.grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=20)
 
-        self.roi_binarizada= ttk.Label(self)
-        self.roi_binarizada.grid(row=0, column=1, columnspan=2, sticky="w", padx=20, pady=20)
         # Separador horizontal
-        self.separator = ttk.Separator(self, orient=HORIZONTAL)
+        self.separator = ttk.Separator(self, orient='horizontal')
         self.separator.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=10)
 
         # Frame superior à esquerda
@@ -46,20 +41,19 @@ class App(ttk.Window):
 
         self.button_carregar_roi = ttk.Button(self.label_frame, text="Carregar ROI", command=self.carregar_roi,
                                               bootstyle="dark", width=15)
-        self.button_carregar_roi.grid(row=0, column=2, padx=10, pady=5)
-
+        self.button_carregar_roi.grid(row=0, column=1, padx=10, pady=5)
 
         self.button_exibir_histograma = ttk.Button(self.label_frame, text="Exibir Histograma",
                                                    command=self.exibir_histograma, bootstyle="dark", width=15)
-        self.button_exibir_histograma.grid(row=0, column=3, padx=10, pady=5)
+        self.button_exibir_histograma.grid(row=0, column=2, padx=10, pady=5)
 
         self.button_recortar_roi = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi,
-                                                   bootstyle="dark", width=15)
+                                              bootstyle="dark", width=15)
         self.button_recortar_roi.grid(row=0, column=3, padx=10, pady=5)
 
-        self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.binaryImage, bootstyle="dark",
-                                           width=15)
-        self.button_binarizar.grid(row=0, column=6, padx=10, pady=5)
+        self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.binarizar_imagem,
+                                           bootstyle="dark", width=15)
+        self.button_binarizar.grid(row=0, column=4, padx=10, pady=5)
 
         # Frame de imagem abaixo do frame superior
         self.imagem_frame = ttk.Labelframe(self, text="Exibir Imagens", bootstyle="dark", padding=5, width=500,
@@ -68,18 +62,27 @@ class App(ttk.Window):
         self.imagem_frame.grid_propagate(False)  # Desativa o redimensionamento automático
 
         # Frame para exibir as rois
-        self.novo_frame = ttk.Labelframe(self, text="Menu Roi", bootstyle="dark", padding=20, width=200, height=200)
+        self.novo_frame = ttk.Labelframe(self, text="Menu Roi", bootstyle="dark", padding=20, width=500, height=500)
         self.novo_frame.grid(row=3, column=1, padx=10, pady=5, sticky="nsew")
         self.novo_frame.grid_propagate(False)  # Desativa o redimensionamento automático
 
-        self.roi_frame = ttk.Labelframe(self.novo_frame, text="Roi", bootstyle="dark", width=200, height=200)
+        self.roi_frame = ttk.Labelframe(self.novo_frame, text="Roi", bootstyle="dark", width=500, height=500)
         self.roi_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
 
         # Conteúdo dentro do roi_frame, centralizado
-        self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI")  # Exemplo de conteúdo
+        self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI")
         self.label_roi.pack(expand=True)  # Expande o conteúdo para centralizar
 
+        self.roi_binarizada = ttk.Label(self.novo_frame, text="Binarizada")
+        self.roi_binarizada.grid(row=0, column=1, columnspan=2, sticky="w", padx=20, pady=20)
+
+        self.button_hue = ttk.Button(self.label_frame, text="HU", command=self.momento_hu, bootstyle="dark",
+                                     width=15)
+        self.button_hue.grid(row=0, column=8, padx=10, pady=5)
         self.button_teste = ttk.Button(self.novo_frame, text="Histograma Roi", command=lambda: print("teste"))
+        self.button_teste.grid(row=2, column=0, padx=5, pady=5)
+
+        self.button_teste = ttk.Button(self.novo_frame, text="Calcular Hu", command=self.momento_hu)
         self.button_teste.grid(row=2, column=0, padx=5, pady=5)
 
         # Frame à direita para operações
@@ -124,6 +127,35 @@ class App(ttk.Window):
             self.imagem_atual = np.array(Image.open(caminho_imagem).convert("L"))
             self.exibir_imagem_no_frame()
 
+    def binarizar_imagem(self):
+        if self.roi is not None:
+            # Aplicar adaptive threshold para binarização adaptativa
+            adaptive_bw_img = cv2.adaptiveThreshold(self.roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                                    cv2.THRESH_BINARY, 11, 2)
+            bw_img_pil = Image.fromarray(adaptive_bw_img)
+            img_tk = ImageTk.PhotoImage(bw_img_pil)
+            self.roi_binarizada.config(image=img_tk)
+            self.roi_binarizada.image = img_tk
+
+            return adaptive_bw_img
+
+        else:
+            messagebox.showerror("Erro", "Nenhuma imagem carregada")
+
+    def momento_hu(self):
+        imagem_binarizada = self.binarizar_imagem()
+
+        if imagem_binarizada is not None:
+            momentos = cv2.moments(imagem_binarizada)
+            momentos_hu = cv2.HuMoments(momentos)
+
+            for i, hu in enumerate(momentos_hu):
+                momentos_hu_str = "\n".join([f"Hu[{i + 1}]: {momento[0]}" for i, momento in enumerate(momentos_hu)])
+                messagebox.showinfo("Momentos Invariantes de Hu", momentos_hu_str)
+                return momentos_hu
+        else:
+            messagebox.showerror("Erro", "Nenhuma imagem carregada")
+
     def carregar_dataset(self):
         caminho_arquivo = filedialog.askopenfilename(
             title="Selecione o arquivo .mat",
@@ -151,43 +183,6 @@ class App(ttk.Window):
 
             else:
                 print("Coluna 'data' não encontrada!")
-
-    def centroid(moment):
-        if moment['m00'] != 0:
-            x_centroid = round(moment['m10'] / moment['m00'])
-            y_centroid = round(moment['m01'] / moment['m00'])
-            print(f"Centróide: ({x_centroid}, {y_centroid})")
-        else:
-            x_centroid, y_centroid = 0, 0
-            print("Centróide: (0, 0)")
-        return x_centroid, y_centroid
-
-    # Função para binarizar a imagem
-    def binaryImage(self):
-        if self.roi is None:
-            messagebox.showerror("Erro", "Nenhuma imagem carregada!")
-            return
-
-        # Aplicar adaptive threshold para binarização adaptativa
-        adaptive_bw_img = cv2.adaptiveThreshold(self.roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                                cv2.THRESH_BINARY, 11, 2)
-        momentos = cv2.moments(adaptive_bw_img)
-        momentos_hu = cv2.HuMoments(momentos)
-        print("Momentos Invariantes de Hu:")
-        for i, hu in enumerate(momentos_hu):
-            print(f"Hu[{i + 1}] = {hu[0]}")
-        # Converter de volta para PIL para exibir na interface
-        bw_img_pil = Image.fromarray(adaptive_bw_img)
-        img_tk = ImageTk.PhotoImage(bw_img_pil)
-
-        # Atualizar a imagem binária na interface
-        self.roi_binarizada.config(image=img_tk)
-        self.roi_binarizada.image = img_tk
-        momentos_hu_str = "\n".join([f"Hu[{i + 1}]: {momento[0]}" for i, momento in enumerate(momentos_hu)])
-        messagebox.showinfo("Momentos Invariantes de Hu", momentos_hu_str)
-        # Limpar o histograma, já que a imagem foi alterada
-        return momentos_hu
-        limpar_histograma()
 
     def carregar_imagens_paciente(self, event=None):
         paciente_id = self.combo_paciente.get()
@@ -247,12 +242,20 @@ class App(ttk.Window):
             # Recorta a ROI e habilita o botão de salvar
             self.roi = self.imagem_atual[y_start:y_end, x_start:x_end]
 
-            # Mostra a ROI no Matplotlib
+            # Limpa o frame de qualquer gráfico anterior
+            for widget in self.roi_frame.winfo_children():
+                widget.destroy()
+
+            # Mostra a ROI no Matplotlib dentro do frame_roi
             fig, ax = plt.subplots(figsize=(1, 1), dpi=28)
             ax.imshow(self.roi, cmap='gray', interpolation='nearest')
             ax.axis('off')
             fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            plt.show()
+
+            # Adiciona o gráfico ao canvas do Tkinter
+            canvas = FigureCanvasTkAgg(fig, master=self.roi_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         # Exibe a imagem para seleção de ROI
         fig, ax = plt.subplots()
@@ -286,12 +289,9 @@ class App(ttk.Window):
             self.exibir_roi_no_frame()
 
     def exibir_roi_no_frame(self):
-        # Limpa o frame de qualquer gráfico anterior
-        for widget in self.label_roi.winfo_children():
-            widget.destroy()
 
         # Cria a figura do Matplotlib e insere a imagem
-        fig, ax = plt.subplots(figsize=(1, 1), dpi=24)
+        fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
         ax.imshow(self.imagem_atual, cmap="gray")
         ax.axis('off')  # Esconde os eixos
 
@@ -317,7 +317,6 @@ class App(ttk.Window):
 
     def on_click(self):
         self.label.config(text="Botão Clicado!")
-
 
 if __name__ == "__main__":
     app = App()
