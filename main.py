@@ -4,9 +4,10 @@ import tkinter as tk
 import ttkbootstrap as ttk
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import cv2
 from ttkbootstrap.constants import *
-from PIL import Image
-from tkinter import filedialog
+from PIL import Image, ImageTk
+from tkinter import filedialog, messagebox
 from scipy.io import loadmat
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 from matplotlib.widgets import RectangleSelector
@@ -25,7 +26,7 @@ class App(ttk.Window):
         self.label.grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=20)
         
         # Separador horizontal
-        self.separator = ttk.Separator(self, orient=HORIZONTAL)
+        self.separator = ttk.Separator(self, orient='horizontal')
         self.separator.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=10)
         
         # Frame superior à esquerda
@@ -45,7 +46,7 @@ class App(ttk.Window):
         self.button_recortar_roi = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi, bootstyle="dark", width=15)
         self.button_recortar_roi.grid(row=0, column=3, padx=10, pady=5)
         
-        self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.on_click, bootstyle="dark", width=15)
+        self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.binarizar_imagem, bootstyle="dark", width=15)
         self.button_binarizar.grid(row=0, column=4, padx=10, pady=5)
         
         # Frame de imagem abaixo do frame superior
@@ -66,7 +67,13 @@ class App(ttk.Window):
         self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI")  # Exemplo de conteúdo
         self.label_roi.pack(expand=True)  # Expande o conteúdo para centralizar
         
+        self.roi_binarizada= ttk.Label(self.novo_frame, text="Binarizada")
+        self.roi_binarizada.grid(row=0, column=1, columnspan=2, sticky="w", padx=20, pady=20)
+        
         self.button_teste = ttk.Button(self.novo_frame, text="Histograma Roi", command=lambda:print("teste"))
+        self.button_teste.grid(row=2, column=0, padx=5, pady=5)
+        
+        self.button_teste = ttk.Button(self.novo_frame, text="Calcular Hu", command=self.momento_hu)
         self.button_teste.grid(row=2, column=0, padx=5, pady=5)
         
         # Frame à direita para operações
@@ -109,7 +116,36 @@ class App(ttk.Window):
         if caminho_imagem:
             self.imagem_atual = np.array(Image.open(caminho_imagem).convert("L"))
             self.exibir_imagem_no_frame()
+             
+    def binarizar_imagem(self):
+        if self.roi is not None:
+            #Aplicar adaptive threshold para binarização adaptativa
+            adaptive_bw_img = cv2.adaptiveThreshold(self.roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                                    cv2.THRESH_BINARY, 11, 2)
+            bw_img_pil = Image.fromarray(adaptive_bw_img)
+            img_tk = ImageTk.PhotoImage(bw_img_pil)
+            self.roi_binarizada.config(image=img_tk)
+            self.roi_binarizada.image = img_tk
             
+            return adaptive_bw_img
+
+        else:
+            messagebox.showerror("Erro", "Nenhuma imagem carregada")
+    
+    def momento_hu(self):
+        imagem_binarizada = self.binarizar_imagem()
+
+        if imagem_binarizada is not None:
+            momentos = cv2.moments(imagem_binarizada)
+            momentos_hu = cv2.HuMoments(momentos)
+            
+            for i, hu in enumerate(momentos_hu):
+                momentos_hu_str = "\n".join([f"Hu[{i + 1}]: {momento[0]}" for i, momento in enumerate(momentos_hu)])
+                messagebox.showinfo("Momentos Invariantes de Hu", momentos_hu_str)
+                return momentos_hu
+        else:
+            messagebox.showerror("Erro", "Nenhuma imagem carregada")
+        
     def carregar_dataset(self):
         caminho_arquivo = filedialog.askopenfilename(
             title="Selecione o arquivo .mat",
@@ -138,6 +174,7 @@ class App(ttk.Window):
             else:
                 print("Coluna 'data' não encontrada!")
                 
+                
     def carregar_imagens_paciente(self, event=None):
         paciente_id = self.combo_paciente.get()        
         imagens = self.imagens_pacientes.get(paciente_id, [])
@@ -156,6 +193,7 @@ class App(ttk.Window):
         if imagem_array is not None:
             self.imagem_atual = imagem_array
             self.exibir_imagem_no_frame()
+            
     
     def exibir_imagem_no_frame(self):
         # Limpa o frame de qualquer gráfico anterior
@@ -235,6 +273,7 @@ class App(ttk.Window):
             fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
             fig.savefig(output_path, dpi=28, bbox_inches='tight', pad_inches=0)
             plt.close(fig)
+            
 
     def carregar_roi(self):
         atual_dir = os.getcwd()
@@ -249,8 +288,6 @@ class App(ttk.Window):
             
     def exibir_roi_no_frame(self):
         # Limpa o frame de qualquer gráfico anterior
-        for widget in self.label_roi.winfo_children():
-            widget.destroy()
         
         # Cria a figura do Matplotlib e insere a imagem
         fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
