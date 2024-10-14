@@ -64,7 +64,7 @@ class App(ttk.Window):
         self.roi_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
         # Conteúdo dentro do roi_frame, centralizado
-        self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI")  # Exemplo de conteúdo
+        self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI") 
         self.label_roi.pack(expand=True)  # Expande o conteúdo para centralizar
         
         self.roi_binarizada= ttk.Label(self.novo_frame, text="Binarizada")
@@ -261,8 +261,6 @@ class App(ttk.Window):
         plt.show()
 
 
-
-
     def salvar_roi(self):
         if self.roi is not None:
             #Caminho para salvar a roi
@@ -287,7 +285,6 @@ class App(ttk.Window):
             self.exibir_roi_no_frame()
             
     def exibir_roi_no_frame(self):
-        # Limpa o frame de qualquer gráfico anterior
         
         # Cria a figura do Matplotlib e insere a imagem
         fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
@@ -310,7 +307,7 @@ class App(ttk.Window):
             ax.set_title("Histograma da Imagem Exibida")
             ax.set_xlabel("Intensidade de Pixel", labelpad=5)
             ax.set_ylabel("Frequência", labelpad=5)
-            plt.show()
+            plt.show(block=False)
         
         else:
             print("Nenhuma imagem para exibir o histograma")
@@ -318,6 +315,13 @@ class App(ttk.Window):
     def on_click(self):
         self.label.config(text="Botão Clicado!")
 
+    def on_close(self):
+        self.destroy()  # Fecha a janela do Tkinter
+        plt.close('all')  # Fecha todos os gráficos abertos do Matplotlib
+        self.quit()  # Encerra o loop principal
+        os._exit(0)  # Garante que o processo termine
+    
 if __name__ == "__main__":
     app = App()
+    app.protocol("WM_DELETE_WINDOW", app.on_close) 
     app.mainloop()
