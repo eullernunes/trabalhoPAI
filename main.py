@@ -40,7 +40,7 @@ class App(ttk.Window):
         self.button_carregar_roi = ttk.Button(self.label_frame, text="Carregar ROI", command=self.carregar_roi, bootstyle="dark", width=15)
         self.button_carregar_roi.grid(row=0, column=1, padx=10, pady=5)
         
-        self.button_exibir_histograma = ttk.Button(self.label_frame, text="Exibir Histograma", command=self.exibir_histograma, bootstyle="dark", width=15)
+        self.button_exibir_histograma = ttk.Button(self.label_frame, text="Exibir Histograma", command=lambda:self.exibir_histograma(self.imagem_atual), bootstyle="dark", width=15)
         self.button_exibir_histograma.grid(row=0, column=2, padx=10, pady=5)
         
         self.button_recortar_roi = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi, bootstyle="dark", width=15)
@@ -70,7 +70,7 @@ class App(ttk.Window):
         self.roi_binarizada= ttk.Label(self.novo_frame, text="Binarizada")
         self.roi_binarizada.grid(row=0, column=1, columnspan=2, sticky="w", padx=20, pady=20)
         
-        self.button_teste = ttk.Button(self.novo_frame, text="Histograma Roi", command=lambda:print("teste"))
+        self.button_teste = ttk.Button(self.novo_frame, text="Histograma Roi", command=lambda:self.exibir_histograma(self.imagem_atual))
         self.button_teste.grid(row=2, column=0, padx=5, pady=5)
         
         self.button_teste = ttk.Button(self.novo_frame, text="Calcular Hu", command=self.momento_hu)
@@ -214,6 +214,8 @@ class App(ttk.Window):
         toolbar = NavigationToolbar2Tk(canvas, self.imagem_frame)
         toolbar.update()
         toolbar.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        plt.close(fig)
 
 
 
@@ -250,6 +252,8 @@ class App(ttk.Window):
             canvas = FigureCanvasTkAgg(fig, master=self.roi_frame)
             canvas.draw()
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+            
+            plt.close(fig)
 
         # Exibe a imagem para seleção de ROI
         fig, ax = plt.subplots()
@@ -284,8 +288,8 @@ class App(ttk.Window):
             self.imagem_atual = np.array(Image.open(caminho_imagem).convert("L"))
             self.exibir_roi_no_frame()
             
-    def exibir_roi_no_frame(self):
-        
+            
+    def exibir_roi_no_frame(self):        
         # Cria a figura do Matplotlib e insere a imagem
         fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
         ax.imshow(self.imagem_atual, cmap="gray")
@@ -295,11 +299,14 @@ class App(ttk.Window):
         canvas = FigureCanvasTkAgg(fig, master=self.label_roi)
         canvas.draw()
         canvas.get_tk_widget().pack()
+        
+        plt.close(fig)
 
 
-    def exibir_histograma(self):
-        if self.imagem_atual is not None:
-            imagem_array = np.array(self.imagem_atual)
+    def exibir_histograma(self, imagem):
+        if imagem is not None:
+            
+            imagem_array = np.array(imagem)
             
             fig, ax = plt.subplots(figsize=(6, 4))
             plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.3)
@@ -308,7 +315,7 @@ class App(ttk.Window):
             ax.set_xlabel("Intensidade de Pixel", labelpad=5)
             ax.set_ylabel("Frequência", labelpad=5)
             plt.show(block=False)
-        
+ 
         else:
             print("Nenhuma imagem para exibir o histograma")
 
