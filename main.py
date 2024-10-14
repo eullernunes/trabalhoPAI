@@ -37,16 +37,16 @@ class App(ttk.Window):
         self.button_carregar_img.grid(row=0, column=0, padx=10, pady=5)
         
         self.button_carregar_roi = ttk.Button(self.label_frame, text="Carregar ROI", command=self.carregar_roi, bootstyle="dark", width=15)
-        self.button_carregar_roi.grid(row=0, column=2, padx=10, pady=5)
+        self.button_carregar_roi.grid(row=0, column=1, padx=10, pady=5)
         
         self.button_exibir_histograma = ttk.Button(self.label_frame, text="Exibir Histograma", command=self.exibir_histograma, bootstyle="dark", width=15)
-        self.button_exibir_histograma.grid(row=0, column=3, padx=10, pady=5)
+        self.button_exibir_histograma.grid(row=0, column=2, padx=10, pady=5)
         
-        self.button_exibir_histograma = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi, bootstyle="dark", width=15)
-        self.button_exibir_histograma.grid(row=0, column=3, padx=10, pady=5)
+        self.button_recortar_roi = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi, bootstyle="dark", width=15)
+        self.button_recortar_roi.grid(row=0, column=3, padx=10, pady=5)
         
         self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.on_click, bootstyle="dark", width=15)
-        self.button_binarizar.grid(row=0, column=6, padx=10, pady=5)
+        self.button_binarizar.grid(row=0, column=4, padx=10, pady=5)
         
         # Frame de imagem abaixo do frame superior
         self.imagem_frame = ttk.Labelframe(self, text="Exibir Imagens", bootstyle="dark", padding=5, width=500, height=500)
@@ -55,11 +55,11 @@ class App(ttk.Window):
         
 
         # Frame para exibir as rois
-        self.novo_frame = ttk.Labelframe(self, text="Menu Roi", bootstyle="dark", padding=20, width= 200, height=200)
+        self.novo_frame = ttk.Labelframe(self, text="Menu Roi", bootstyle="dark", padding=20, width= 500, height=500)
         self.novo_frame.grid(row=3, column=1, padx=10, pady=5, sticky="nsew")
         self.novo_frame.grid_propagate(False)  # Desativa o redimensionamento automático
 
-        self.roi_frame = ttk.Labelframe(self.novo_frame, text="Roi", bootstyle="dark", width=200, height=200)
+        self.roi_frame = ttk.Labelframe(self.novo_frame, text="Roi", bootstyle="dark", width=500, height=500)
         self.roi_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
         # Conteúdo dentro do roi_frame, centralizado
@@ -198,12 +198,20 @@ class App(ttk.Window):
             # Recorta a ROI e habilita o botão de salvar
             self.roi = self.imagem_atual[y_start:y_end, x_start:x_end]
 
-            # Mostra a ROI no Matplotlib
+            # Limpa o frame de qualquer gráfico anterior
+            for widget in self.roi_frame.winfo_children():
+                widget.destroy()
+
+            # Mostra a ROI no Matplotlib dentro do frame_roi
             fig, ax = plt.subplots(figsize=(1, 1), dpi=28)
             ax.imshow(self.roi, cmap='gray', interpolation='nearest')
             ax.axis('off')
             fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            plt.show()
+
+            # Adiciona o gráfico ao canvas do Tkinter
+            canvas = FigureCanvasTkAgg(fig, master=self.roi_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         # Exibe a imagem para seleção de ROI
         fig, ax = plt.subplots()
@@ -213,6 +221,7 @@ class App(ttk.Window):
             props=dict(facecolor='green', edgecolor='green', alpha=0.5, fill=True)
         )
         plt.show()
+
 
 
 
@@ -244,7 +253,7 @@ class App(ttk.Window):
             widget.destroy()
         
         # Cria a figura do Matplotlib e insere a imagem
-        fig, ax = plt.subplots(figsize=(1, 1), dpi=24)
+        fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
         ax.imshow(self.imagem_atual, cmap="gray")
         ax.axis('off')  # Esconde os eixos
 
