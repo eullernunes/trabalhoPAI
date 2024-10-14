@@ -1,361 +1,324 @@
 import os
-from PIL import Image, ImageTk
-import ttkbootstrap as tb
-from skimage.measure import moments
-from ttkbootstrap.constants import *
-from tkinter import filedialog, messagebox, StringVar, Menu
-from scipy.io import loadmat
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
 import cv2
-from skimage.feature import graycomatrix, graycoprops
-from skimage import exposure
+import numpy as np
+import tkinter as tk
+import ttkbootstrap as ttk,tb
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from ttkbootstrap.constants import *
+from PIL import Image, ImageTk
+from tkinter import filedialog, messagebox
+from scipy.io import loadmat
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.widgets import RectangleSelector
 
-# Variável global para armazenar o arquivo .mat carregado e a imagem atual
-data = None
-img = None
 
-# Função para limpar o histograma no frame_histograma
-def limpar_histograma():
-    for widget in frame_histograma.winfo_children():
-        widget.destroy()
+class App(ttk.Window):
+    def __init__(self):
+        super().__init__(themename="litera")
+        self.title("Frame com Borda")
+        self.geometry("1224x800")
+        self.imagem_atual = None
+        self.roi_size = 28  # Tamanho fixo da ROI de 28x28 pixels
+        self.roi = None
 
-# Função para exibir histograma no frame_histograma
-def exibir_histograma():
-    global img
-    if img is None:
-        messagebox.showerror("Erro", "Nenhuma imagem carregada!")
-        return
+        # Label superior
+        self.label = ttk.Label(self, text="Image Processing", font=("Helvetica", 14))
+        self.label.grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=20)
+        self.label_imagem= ttk.Label(self)
+        self.label_imagem.grid(row=0, column=0, columnspan=2, sticky="w", padx=20, pady=20)
 
-    # Converte a imagem para tons de cinza se estiver em outro modo
-    gray_img = img.convert('L')
+        self.roi_binarizada= ttk.Label(self)
+        self.roi_binarizada.grid(row=0, column=1, columnspan=2, sticky="w", padx=20, pady=20)
+        # Separador horizontal
+        self.separator = ttk.Separator(self, orient=HORIZONTAL)
+        self.separator.grid(row=1, column=0, columnspan=3, sticky="ew", padx=20, pady=10)
 
-    # Calcula o histograma da imagem em tons de cinza
-    hist = gray_img.histogram()
+        # Frame superior à esquerda
+        self.label_frame = ttk.Labelframe(self, text="Opções", bootstyle="dark", padding=10, width=400, height=200)
+        self.label_frame.grid(row=2, column=0, columnspan=2, padx=10, pady=5, sticky="nw")
 
-    # Limpa o frame_histograma antes de plotar um novo histograma
-    limpar_histograma()
+        # Botões no frame superior
+        self.button_carregar_img = ttk.Button(self.label_frame, text="Carregar Imagem", command=self.carregar_imagem,
+                                              bootstyle="dark", width=15)
+        self.button_carregar_img.grid(row=0, column=0, padx=10, pady=5)
 
-    # Cria e exibe o gráfico do histograma
-    fig, ax = plt.subplots()
-    ax.plot(hist, color='black')
-    ax.set_title("Histograma da Imagem")
-    ax.set_xlabel("Intensidade de pixels")
-    ax.set_ylabel("Número de pixels")
-    canvas = FigureCanvasTkAgg(fig, master=frame_histograma)
-    canvas.draw()
-    canvas.get_tk_widget().pack()
+        self.button_carregar_roi = ttk.Button(self.label_frame, text="Carregar ROI", command=self.carregar_roi,
+                                              bootstyle="dark", width=15)
+        self.button_carregar_roi.grid(row=0, column=2, padx=10, pady=5)
 
-# Função para carregar arquivo .mat e exibir opções de paciente e imagem
-def carregar_arquivo_mat():
-    global data
-    diretorio_atual = os.getcwd()
-    caminho_mat = filedialog.askopenfilename(
-        initialdir=diretorio_atual,
-        filetypes=[("Arquivos MAT", "*.mat"), ("Todos os arquivos", "*.*")]
-    )
-    if caminho_mat:
-        try:
-            data = loadmat(caminho_mat)['data'][0]  # Carrega a lista de pacientes
-            pacientes = [f"Paciente {i}" for i in range(len(data))]
-            combo_paciente['values'] = pacientes
-            combo_imagem['values'] = [f"Imagem {i}" for i in range(10)]  # 10 imagens por paciente
-            combo_paciente.current(0)
-            combo_imagem.current(0)
-            messagebox.showinfo("Sucesso", "Arquivo .mat carregado com sucesso!")
-            ocultar_opcoes_imagem()  # Oculta as opções da imagem comum
-            mostrar_opcoes_mat()  # Mostra as opções específicas para arquivo .mat
-        except Exception as e:
-            messagebox.showerror("Erro", f"Erro ao carregar o arquivo .mat: {e}")
 
-# Função para carregar e exibir a imagem selecionada do .mat
-def carregar_imagem_selecionada():
-    global img
-    try:
-        indice_paciente = int(selected_patient.get().split()[-1])
-        indice_imagem = int(selected_image.get().split()[-1])
-        img_data = data[indice_paciente]['images'][indice_imagem]
+        self.button_exibir_histograma = ttk.Button(self.label_frame, text="Exibir Histograma",
+                                                   command=self.exibir_histograma, bootstyle="dark", width=15)
+        self.button_exibir_histograma.grid(row=0, column=3, padx=10, pady=5)
 
-        # Convertendo a imagem do .mat para PIL
-        img = Image.fromarray(img_data)
-        img = img.resize((400, 300))
-        img_tk = ImageTk.PhotoImage(img)
+        self.button_recortar_roi = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi,
+                                                   bootstyle="dark", width=15)
+        self.button_recortar_roi.grid(row=0, column=3, padx=10, pady=5)
 
-        # Limpa o histograma e atualiza a exibição no frame de imagem
+        self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.binaryImage, bootstyle="dark",
+                                           width=15)
+        self.button_binarizar.grid(row=0, column=6, padx=10, pady=5)
+
+        # Frame de imagem abaixo do frame superior
+        self.imagem_frame = ttk.Labelframe(self, text="Exibir Imagens", bootstyle="dark", padding=5, width=500,
+                                           height=500)
+        self.imagem_frame.grid(row=3, column=0, padx=10, pady=5, sticky="nsew")
+        self.imagem_frame.grid_propagate(False)  # Desativa o redimensionamento automático
+
+        # Frame para exibir as rois
+        self.novo_frame = ttk.Labelframe(self, text="Menu Roi", bootstyle="dark", padding=20, width=200, height=200)
+        self.novo_frame.grid(row=3, column=1, padx=10, pady=5, sticky="nsew")
+        self.novo_frame.grid_propagate(False)  # Desativa o redimensionamento automático
+
+        self.roi_frame = ttk.Labelframe(self.novo_frame, text="Roi", bootstyle="dark", width=200, height=200)
+        self.roi_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+
+        # Conteúdo dentro do roi_frame, centralizado
+        self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI")  # Exemplo de conteúdo
+        self.label_roi.pack(expand=True)  # Expande o conteúdo para centralizar
+
+        self.button_teste = ttk.Button(self.novo_frame, text="Histograma Roi", command=lambda: print("teste"))
+        self.button_teste.grid(row=2, column=0, padx=5, pady=5)
+
+        # Frame à direita para operações
+        self.label_frame_direita = ttk.Labelframe(self, text="Operações", bootstyle="dark", padding=20)
+        self.label_frame_direita.grid(row=3, column=2, padx=10, pady=5, sticky="ne")
+
+        # Botões no frame direito
+
+        self.button_carregar_mat = ttk.Button(self.label_frame_direita, text="Carregar .Mat",
+                                              command=self.carregar_dataset, bootstyle="dark", width=15)
+        self.button_carregar_mat.grid(row=0, column=0, padx=10, pady=5)
+
+        # Frame combobox
+        self.combo_frame = ttk.Labelframe(self.label_frame_direita, text="Pacientes", bootstyle="dark", padding=5)
+        self.combo_frame.grid(row=2, column=0, padx=10, pady=(25, 10), sticky="nw")
+
+        self.combo_paciente = ttk.Combobox(self.combo_frame, bootstyle="primary", state="readonly")
+        self.combo_paciente.grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.combo_paciente.bind("<<ComboboxSelected>>", self.carregar_imagens_paciente)
+
+        self.combo_imagens = ttk.Combobox(self.combo_frame, bootstyle="primary", state="readonly")
+        self.combo_imagens.grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.combo_imagens.bind("<<ComboboxSelected>>", self.exibir_imagem_paciente)
+
+        # Dicionário para armazenar as imagens dos pacientes
+        self.imagens_pacientes = {}
+
+        # Configuração de redimensionamento das colunas
+        self.columnconfigure(0, weight=2)  # O frame de imagem ocupa mais espaço
+        self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, weight=1)
+        self.rowconfigure(3, weight=1)
+
+    def carregar_imagem(self):
+        atual_dir = os.getcwd()
+        caminho_imagem = filedialog.askopenfilename(
+            initialdir=atual_dir,
+            title="Selecione uma imagem",
+            filetypes=[("Imagens", ".jpg .png")]
+        )
+        if caminho_imagem:
+            self.imagem_atual = np.array(Image.open(caminho_imagem).convert("L"))
+            self.exibir_imagem_no_frame()
+
+    def carregar_dataset(self):
+        caminho_arquivo = filedialog.askopenfilename(
+            title="Selecione o arquivo .mat",
+            filetypes=[("Mat files", ".mat")]
+        )
+
+        if caminho_arquivo:
+            mat = loadmat(caminho_arquivo)
+            data = mat.get("data")
+
+            if data is not None:
+                for i in range(data.shape[1]):  # Iterar pacientes
+                    paciente_id = f"Paciente {i + 1}"
+                    imagens = []
+
+                    for j in range(10):  # Iterar sobre as 10 imagens de cada paciente
+                        img_array = data['images'][0][i][j]
+                        imagens.append(img_array)
+
+                    self.imagens_pacientes[paciente_id] = imagens
+
+                self.combo_paciente['values'] = list(self.imagens_pacientes.keys())
+                self.combo_paciente.current(0)
+                self.carregar_imagens_paciente()
+
+            else:
+                print("Coluna 'data' não encontrada!")
+
+    def centroid(moment):
+        if moment['m00'] != 0:
+            x_centroid = round(moment['m10'] / moment['m00'])
+            y_centroid = round(moment['m01'] / moment['m00'])
+            print(f"Centróide: ({x_centroid}, {y_centroid})")
+        else:
+            x_centroid, y_centroid = 0, 0
+            print("Centróide: (0, 0)")
+        return x_centroid, y_centroid
+
+    # Função para binarizar a imagem
+    def binaryImage(self):
+        if self.roi is None:
+            messagebox.showerror("Erro", "Nenhuma imagem carregada!")
+            return
+
+        # Aplicar adaptive threshold para binarização adaptativa
+        adaptive_bw_img = cv2.adaptiveThreshold(self.roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                                cv2.THRESH_BINARY, 11, 2)
+        momentos = cv2.moments(adaptive_bw_img)
+        momentos_hu = cv2.HuMoments(momentos)
+        print("Momentos Invariantes de Hu:")
+        for i, hu in enumerate(momentos_hu):
+            print(f"Hu[{i + 1}] = {hu[0]}")
+        # Converter de volta para PIL para exibir na interface
+        bw_img_pil = Image.fromarray(adaptive_bw_img)
+        img_tk = ImageTk.PhotoImage(bw_img_pil)
+
+        # Atualizar a imagem binária na interface
+        self.roi_binarizada.config(image=img_tk)
+        self.roi_binarizada.image = img_tk
+        momentos_hu_str = "\n".join([f"Hu[{i + 1}]: {momento[0]}" for i, momento in enumerate(momentos_hu)])
+        messagebox.showinfo("Momentos Invariantes de Hu", momentos_hu_str)
+        # Limpar o histograma, já que a imagem foi alterada
+        return momentos_hu
         limpar_histograma()
-        label_imagem.config(image=img_tk)
-        label_imagem.image = img_tk
-    except Exception as e:
-        messagebox.showerror("Erro", f"Erro ao carregar a imagem: {e}")
 
-# Função para calcular a GLCM e extrair os descritores de textura
-def calcular_glcm(img_array):
-    # Converte a imagem para tons de cinza (se necessário)
-    if len(img_array.shape) == 3:
-        img_array = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
+    def carregar_imagens_paciente(self, event=None):
+        paciente_id = self.combo_paciente.get()
+        imagens = self.imagens_pacientes.get(paciente_id, [])
 
-    # Ajuste o contraste da imagem para melhorar a visualização da GLCM
-    img_array = exposure.rescale_intensity(img_array, in_range='image', out_range=(0, 255))
+        self.combo_imagens['values'] = [f"Imagem {i + 1}" for i in range(len(imagens))]
+        self.combo_imagens.current(0)
 
-    # Converte a imagem para uint8, pois o graycomatrix não suporta imagens float
-    img_array = img_array.astype(np.uint8)
+        self.exibir_imagem_paciente()
 
-    # Calcula a matriz de co-ocorrência para distâncias e ângulos específicos
-    glcm = graycomatrix(img_array, distances=[1, 2, 3], angles=[0, np.pi / 4, np.pi / 2, 3 * np.pi / 4], levels=256,
-                        symmetric=True, normed=True)
-    img_array = cv2.equalizeHist(img_array)
+    def exibir_imagem_paciente(self, event=None):
+        paciente_id = self.combo_paciente.get()
+        imagem_index = self.combo_imagens.current()
 
-    # Extrai os descritores de textura
-    contraste = graycoprops(glcm, 'contrast')[0, 0]
-    homogeneidade = graycoprops(glcm, 'homogeneity')[0, 0]
-    energia = graycoprops(glcm, 'energy')[0, 0]
-    correlacao = graycoprops(glcm, 'correlation')[0, 0]
+        imagem_array = self.imagens_pacientes.get(paciente_id)[imagem_index]
 
-    # Exibe os valores calculados em uma janela de diálogo
-    messagebox.showinfo("Descritores de Textura",
-                        f"Contraste: {contraste}\n"
-                        f"Homogeneidade: {homogeneidade}\n"
-                        f"Energia: {energia}\n"
-                        f"Correlação: {correlacao}")
+        if imagem_array is not None:
+            self.imagem_atual = imagem_array
+            self.exibir_imagem_no_frame()
 
-    # Exibir a GLCM como uma imagem (matriz)
-    exibir_glcm(glcm)
+    def exibir_imagem_no_frame(self):
+        # Limpa o frame de qualquer gráfico anterior
+        for widget in self.imagem_frame.winfo_children():
+            widget.destroy()
 
-def exibir_glcm(glcm):
-    # Limpar o frame do histograma antes de exibir a GLCM
-    limpar_histograma()
+        # Cria a figura do Matplotlib e insere a imagem
+        fig, ax = plt.subplots(figsize=(6, 5), dpi=100)
+        ax.imshow(self.imagem_atual, cmap="gray")
+        ax.axis('off')  # Esconde os eixos
 
-    # Exibir a GLCM usando matplotlib
-    fig, ax = plt.subplots()
-    ax.imshow(glcm[:, :, 0, 0], cmap='gray')  # Mostra a primeira matriz da GLCM
-    ax.set_title("Matriz de Co-ocorrência (GLCM)")
-    ax.set_xlabel("Nível de Cinza (i)")
-    ax.set_ylabel("Nível de Cinza (j)")
+        # Adiciona a figura ao canvas do Tkinter
+        canvas = FigureCanvasTkAgg(fig, master=self.imagem_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack()
 
-    # Adiciona o gráfico ao frame de histograma usando FigureCanvasTkAgg
-    canvas = FigureCanvasTkAgg(fig, master=frame_histograma)
-    canvas.draw()
-    canvas.get_tk_widget().pack()
+        # Adiciona a barra de ferramentas de navegação
+        toolbar = NavigationToolbar2Tk(canvas, self.imagem_frame)
+        toolbar.update()
+        toolbar.pack(side=tk.BOTTOM, fill=tk.X)
 
-# Função para carregar e exibir a imagem
-def carregar_imagem():
-    global img
-    diretorio_atual = os.getcwd()
-    caminho_imagem = filedialog.askopenfilename(
-        initialdir=diretorio_atual,
-        filetypes=[("Imagens", "*.png;*.jpg;*.jpeg;*.bmp"), ("Todos os arquivos", "*.*")]
-    )
-    if caminho_imagem:
-        img = Image.open(caminho_imagem)
-        img = img.resize((400, 300))
-        img_tk = ImageTk.PhotoImage(img)
+    def recortar_roi(self):
+        # Função de callback para a seleção de ROI com tamanho fixo de 28x28
+        def onselect(eclick, erelease):
+            x_center = int(eclick.xdata)
+            y_center = int(eclick.ydata)
 
-        # Limpa o histograma e atualiza a exibição no frame de imagem
-        limpar_histograma()
-        label_imagem.config(image=img_tk)
-        label_imagem.image = img_tk
+            x_start = max(x_center - self.roi_size // 2, 0)
+            y_start = max(y_center - self.roi_size // 2, 0)
+            x_end = x_start + self.roi_size
+            y_end = y_start + self.roi_size
 
-        ocultar_opcoes_mat()  # Oculta as opções do .mat
-        mostrar_opcoes_imagem()  # Mostra as opções específicas para imagem comum
+            x_end = min(x_end, self.imagem_atual.shape[1])
+            y_end = min(y_end, self.imagem_atual.shape[0])
+            x_start = max(0, x_end - self.roi_size)
+            y_start = max(0, y_end - self.roi_size)
 
-# Função para selecionar ROI (Região de Interesse)
-def selecionar_roi(imagem):
-    roi = cv2.selectROI("Selecione a ROI", imagem, fromCenter=False, showCrosshair=True)
-    cv2.destroyAllWindows()
-    return roi
+            # Recorta a ROI e habilita o botão de salvar
+            self.roi = self.imagem_atual[y_start:y_end, x_start:x_end]
 
-# Função para recortar a ROI e atualizar a imagem
-def recortar_roi():
-    global img
-    if img is None:
-        messagebox.showerror("Erro", "Nenhuma imagem carregada!")
-        return
+            # Mostra a ROI no Matplotlib
+            fig, ax = plt.subplots(figsize=(1, 1), dpi=28)
+            ax.imshow(self.roi, cmap='gray', interpolation='nearest')
+            ax.axis('off')
+            fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            plt.show()
 
-    # Converter a imagem PIL para um array do OpenCV (BGR)
-    img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+        # Exibe a imagem para seleção de ROI
+        fig, ax = plt.subplots()
+        ax.imshow(self.imagem_atual, cmap='gray')
+        rect_selector = RectangleSelector(
+            ax, onselect, interactive=False, button=[1],
+            props=dict(facecolor='green', edgecolor='green', alpha=0.5, fill=True)
+        )
+        plt.show()
 
-    # Chamar a função para selecionar a ROI
-    roi_coords = selecionar_roi(img_cv)
-    x, y, w, h = roi_coords
+    def salvar_roi(self):
+        if self.roi is not None:
+            # Caminho para salvar a roi
+            output_path = "roi_image.png"
+            fig, ax = plt.subplots(figsize=(1, 1), dpi=28)
+            ax.imshow(self.roi, cmap='gray', interpolation='nearest')
+            ax.axis('off')
+            fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
+            fig.savefig(output_path, dpi=28, bbox_inches='tight', pad_inches=0)
+            plt.close(fig)
 
-    # Verificar se a ROI selecionada é válida
-    if w == 0 or h == 0:
-        messagebox.showerror("Erro", "Nenhuma ROI selecionada ou seleção inválida!")
-        return
+    def carregar_roi(self):
+        atual_dir = os.getcwd()
+        caminho_imagem = filedialog.askopenfilename(
+            initialdir=atual_dir,
+            title="Selecione uma imagem",
+            filetypes=[("Imagens", ".jpg .png")]
+        )
+        if caminho_imagem:
+            self.imagem_atual = np.array(Image.open(caminho_imagem).convert("L"))
+            self.exibir_roi_no_frame()
 
-    # Recortar a imagem com base na ROI selecionada
-    roi_cropped = img_cv[int(y):int(y + h), int(x):int(x + w)]
+    def exibir_roi_no_frame(self):
+        # Limpa o frame de qualquer gráfico anterior
+        for widget in self.label_roi.winfo_children():
+            widget.destroy()
 
-    # Atualizar a exibição da imagem na interface
-    img_cropped = Image.fromarray(cv2.cvtColor(roi_cropped, cv2.COLOR_BGR2RGB))
-    img_resized = img_cropped.resize((400, 300))
-    img = img_resized  # Atualizar a imagem global
-    img_tk = ImageTk.PhotoImage(img)
-    label_imagem.config(image=img_tk)
-    label_imagem.image = img_tk
+        # Cria a figura do Matplotlib e insere a imagem
+        fig, ax = plt.subplots(figsize=(1, 1), dpi=24)
+        ax.imshow(self.imagem_atual, cmap="gray")
+        ax.axis('off')  # Esconde os eixos
 
-    # Limpar o histograma já que a imagem mudou
-    limpar_histograma()
+        # Adiciona a figura ao canvas do Tkinter
+        canvas = FigureCanvasTkAgg(fig, master=self.label_roi)
+        canvas.draw()
+        canvas.get_tk_widget().pack()
 
-    # Calcular a GLCM e os descritores de textura para a ROI
-    calcular_glcm(roi_cropped)
+    def exibir_histograma(self):
+        if self.imagem_atual is not None:
+            imagem_array = np.array(self.imagem_atual)
 
-# Função para mostrar as opções no menu lateral para arquivos .mat
-def mostrar_opcoes_mat():
-    # Exibe as opções de paciente e imagem, além das opções padrão
-    combo_paciente.pack(fill=X, padx=10, pady=5)
-    combo_imagem.pack(fill=X, padx=10, pady=5)
-    btn_carregar_imagem_selecionada.pack(fill=X, padx=10, pady=10)
-    btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
-    btn_recortar_roi.pack(fill=X, padx=10, pady=10)
-    btn_binarizar_imagem.pack(fill=X, padx=10, pady=10)
+            fig, ax = plt.subplots(figsize=(6, 4))
+            plt.subplots_adjust(left=0.1, right=0.9, top=0.9, bottom=0.3)
+            ax.hist(imagem_array.ravel(), bins=256, range=(0, 256), color='gray')
+            ax.set_title("Histograma da Imagem Exibida")
+            ax.set_xlabel("Intensidade de Pixel", labelpad=5)
+            ax.set_ylabel("Frequência", labelpad=5)
+            plt.show()
 
+        else:
+            print("Nenhuma imagem para exibir o histograma")
 
-# Função para calcular o centróide
-def centroid(moment):
-    if moment['m00'] != 0:
-        x_centroid = round(moment['m10'] / moment['m00'])
-        y_centroid = round(moment['m01'] / moment['m00'])
-        print(f"Centróide: ({x_centroid}, {y_centroid})")
-    else:
-        x_centroid, y_centroid = 0, 0
-        print("Centróide: (0, 0)")
-    return x_centroid, y_centroid
-
-# Função para binarizar a imagem
-def binaryImage():
-    global img
-    if img is None:
-        messagebox.showerror("Erro", "Nenhuma imagem carregada!")
-        return
-
-    # Verificar o tipo de imagem carregada e converter para grayscale
-    if img.mode != 'L':  # Se a imagem não estiver em tons de cinza, converte
-        img_cv = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
-    else:
-        img_cv = np.array(img)  # Se já estiver em grayscale, usa diretamente
-
-    # Aplicar adaptive threshold para binarização adaptativa
-    adaptive_bw_img = cv2.adaptiveThreshold(img_cv, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                            cv2.THRESH_BINARY, 11, 2)
-    momentos = cv2.moments(adaptive_bw_img)
-    momentos_hu = cv2.HuMoments(momentos)
-    print("Momentos Invariantes de Hu:")
-    for i, hu in enumerate(momentos_hu):
-        print(f"Hu[{i + 1}] = {hu[0]}")
-    # Converter de volta para PIL para exibir na interface
-    bw_img_pil = Image.fromarray(adaptive_bw_img)
-    img_resized = bw_img_pil.resize((400, 300))
-    img_tk = ImageTk.PhotoImage(img_resized)
-
-    # Atualizar a imagem binária na interface
-    label_imagem.config(image=img_tk)
-    label_imagem.image = img_tk
-    momentos_hu_str = "\n".join([f"Hu[{i + 1}]: {momento[0]}" for i, momento in enumerate(momentos_hu)])
-    messagebox.showinfo("Momentos Invariantes de Hu", momentos_hu_str)
-    # Limpar o histograma, já que a imagem foi alterada
-    return momentos_hu
-    limpar_histograma()
+    def on_click(self):
+        self.label.config(text="Botão Clicado!")
 
 
-# Função para mostrar as opções no menu lateral para imagens comuns
-def mostrar_opcoes_imagem():
-    # Exibe as opções padrão e o novo botão "Selecionar Nova Imagem"
-    btn_selecionar_nova_imagem.pack(fill=X, padx=10, pady=10)
-    btn_calcular_histograma.pack(fill=X, padx=10, pady=10)
-    btn_recortar_roi.pack(fill=X, padx=10, pady=10)
-    btn_binarizar_imagem.pack(fill=X, padx=10, pady=10)
-    btn_momentos_hu.pack(fill=X, padx=10, pady=10)
-
-# Função para ocultar as opções do arquivo .mat
-def ocultar_opcoes_mat():
-    combo_paciente.pack_forget()
-    combo_imagem.pack_forget()
-    btn_carregar_imagem_selecionada.pack_forget()
-
-
-# Função para ocultar as opções da imagem comum
-def ocultar_opcoes_imagem():
-    btn_selecionar_nova_imagem.pack_forget()
-    btn_calcular_histograma.pack_forget()
-    btn_recortar_roi.pack_forget()
-
-# Função para criar a janela principal
-def criar_janela():
-    global frame_imagem, frame_histograma, label_imagem
-    global combo_paciente, combo_imagem
-    global btn_carregar_imagem_selecionada, btn_calcular_histograma, btn_recortar_roi, btn_selecionar_nova_imagem,btn_binarizar_imagem,btn_momentos_hu
-    global selected_patient, selected_image
-
-    # Configurações iniciais
-    janela = tb.Window(themename="cerculean")
-    janela.title("📷 PROCESSAMENTO DE IMAGENS 📷")
-    janela.geometry("1000x600")
-    janela.minsize(1000, 600)
-
-    # Inicialização de StringVars após a criação da janela
-    selected_patient = StringVar(janela)
-    selected_image = StringVar(janela)
-
-    # Menu superior
-    menu = Menu(janela)
-    janela.config(menu=menu)
-
-    arquivo_menu = Menu(menu, tearoff=0)
-    menu.add_cascade(label="Arquivo", menu=arquivo_menu)
-    arquivo_menu.add_command(label="Carregar Imagem", command=carregar_imagem)
-    arquivo_menu.add_command(label="Carregar Arquivo .mat", command=carregar_arquivo_mat)
-
-    # Frame principal
-    frame_principal = tb.Frame(janela)
-    frame_principal.pack(fill=BOTH, expand=True)
-
-    # Menu lateral
-    frame_menu_lateral = tb.Frame(frame_principal, bootstyle="secondary", width=200)
-    frame_menu_lateral.pack(side=LEFT, fill=Y)
-
-    # Frame superior para botões e colunas
-    frame_superior = tb.Frame(frame_principal)
-    frame_superior.pack(side=TOP, fill=BOTH, expand=True, padx=10, pady=5)
-
-    # Frame para exibir a imagem
-    frame_imagem = tb.Frame(frame_superior, width=400, height=300)
-    frame_imagem.pack(side=TOP, fill=X, padx=10, pady=5)
-
-    # Frame para exibir o histograma
-    frame_histograma = tb.Frame(frame_superior, width=400, height=300)
-    frame_histograma.pack(side=TOP, fill=X, padx=10, pady=5)
-
-    # Label de imagem
-    label_imagem = tb.Label(frame_imagem)
-    label_imagem.pack(fill=BOTH, expand=True)
-
-    # Combobox para seleção de paciente e imagem
-    combo_paciente = tb.Combobox(frame_menu_lateral, textvariable=selected_patient)
-    combo_imagem = tb.Combobox(frame_menu_lateral, textvariable=selected_image)
-
-    # Botão para carregar imagem selecionada
-    btn_carregar_imagem_selecionada = tb.Button(frame_menu_lateral, text="Carregar Imagem Selecionada",
-                                                command=carregar_imagem_selecionada, bootstyle="primary")
-
-    # Botão para calcular histograma
-    btn_calcular_histograma = tb.Button(frame_menu_lateral, text="Calcular Histograma", command=exibir_histograma,
-                                        bootstyle="info")
-
-    # Botão para recortar ROI
-    btn_recortar_roi = tb.Button(frame_menu_lateral, text="Recortar ROI", command=recortar_roi, bootstyle="warning")
-
-    # Novo botão para selecionar uma nova imagem
-    btn_selecionar_nova_imagem = tb.Button(frame_menu_lateral, text="Selecionar Nova Imagem", command=carregar_imagem,
-                                           bootstyle="primary")
-
-    # Chamar a função de binarizar a imagem, você pode fazer isso no botão ou em outro ponto após carregar a imagem
-    btn_binarizar_imagem = tb.Button(frame_menu_lateral, text="Binarizar Imagem", command=binaryImage,
-                                     bootstyle="primary")
-
-    # Executando a janela
-    janela.mainloop()
-
-# Iniciar a aplicação
-criar_janela()
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
