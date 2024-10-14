@@ -42,6 +42,9 @@ class App(ttk.Window):
         self.button_exibir_histograma = ttk.Button(self.label_frame, text="Exibir Histograma", command=self.exibir_histograma, bootstyle="dark", width=15)
         self.button_exibir_histograma.grid(row=0, column=3, padx=10, pady=5)
         
+        self.button_exibir_histograma = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi, bootstyle="dark", width=15)
+        self.button_exibir_histograma.grid(row=0, column=3, padx=10, pady=5)
+        
         self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.on_click, bootstyle="dark", width=15)
         self.button_binarizar.grid(row=0, column=6, padx=10, pady=5)
         
@@ -58,6 +61,10 @@ class App(ttk.Window):
 
         self.roi_frame = ttk.Labelframe(self.novo_frame, text="Roi", bootstyle="dark", width=200, height=200)
         self.roi_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        
+        # Conteúdo dentro do roi_frame, centralizado
+        self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI")  # Exemplo de conteúdo
+        self.label_roi.pack(expand=True)  # Expande o conteúdo para centralizar
         
         self.button_teste = ttk.Button(self.novo_frame, text="Histograma Roi", command=lambda:print("teste"))
         self.button_teste.grid(row=2, column=0, padx=5, pady=5)
@@ -175,48 +182,36 @@ class App(ttk.Window):
     def recortar_roi(self):
         # Função de callback para a seleção de ROI com tamanho fixo de 28x28
         def onselect(eclick, erelease):
-            # Usa apenas as coordenadas do clique inicial
             x_center = int(eclick.xdata)
             y_center = int(eclick.ydata)
-
-            # Calcula os limites da ROI de 28x28 ao redor do centro
+            
             x_start = max(x_center - self.roi_size // 2, 0)
             y_start = max(y_center - self.roi_size // 2, 0)
             x_end = x_start + self.roi_size
             y_end = y_start + self.roi_size
-
-            # Certifica-se de que o recorte não ultrapassa as bordas
+            
             x_end = min(x_end, self.imagem_atual.shape[1])
             y_end = min(y_end, self.imagem_atual.shape[0])
             x_start = max(0, x_end - self.roi_size)
             y_start = max(0, y_end - self.roi_size)
 
-            # Recorta a ROI de tamanho fixo 28x28
+            # Recorta a ROI e habilita o botão de salvar
             self.roi = self.imagem_atual[y_start:y_end, x_start:x_end]
-            self.button10.config(state="normal")
-            
-            # Configuração para exibir a imagem no tamanho exato e garantir o salvamento sem margens
+
+            # Mostra a ROI no Matplotlib
             fig, ax = plt.subplots(figsize=(1, 1), dpi=28)
             ax.imshow(self.roi, cmap='gray', interpolation='nearest')
-            ax.axis('off')  # Remove os eixos
+            ax.axis('off')
             fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            
+            plt.show()
 
-            # Integra o plt com o Tkinter utilizando canvas, e sem a barra de ferramentas
-            canvas = FigureCanvasTkAgg(fig, master=self)
-            canvas.draw()
-            canvas.get_tk_widget().pack()
-
-        # Exibe a imagem com RectangleSelector para selecionar a ROI de tamanho fixo
+        # Exibe a imagem para seleção de ROI
         fig, ax = plt.subplots()
         ax.imshow(self.imagem_atual, cmap='gray')
-        
-        # Configura o RectangleSelector para capturar apenas o ponto inicial
         rect_selector = RectangleSelector(
-            ax, onselect, interactive=False, button=[1],  # Apenas responde ao clique com o botão esquerdo
+            ax, onselect, interactive=False, button=[1], 
             props=dict(facecolor='green', edgecolor='green', alpha=0.5, fill=True)
         )
-
         plt.show()
 
 
@@ -245,7 +240,7 @@ class App(ttk.Window):
             
     def exibir_roi_no_frame(self):
         # Limpa o frame de qualquer gráfico anterior
-        for widget in self.roi_frame.winfo_children():
+        for widget in self.label_roi.winfo_children():
             widget.destroy()
         
         # Cria a figura do Matplotlib e insere a imagem
@@ -254,7 +249,7 @@ class App(ttk.Window):
         ax.axis('off')  # Esconde os eixos
 
         # Adiciona a figura ao canvas do Tkinter
-        canvas = FigureCanvasTkAgg(fig, master=self.roi_frame)
+        canvas = FigureCanvasTkAgg(fig, master=self.label_roi)
         canvas.draw()
         canvas.get_tk_widget().pack()
 
