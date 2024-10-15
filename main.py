@@ -15,7 +15,7 @@ from matplotlib.widgets import RectangleSelector
 class App(ttk.Window):
     def __init__(self):
         super().__init__(themename="litera")
-        self.title("Frame com Borda")
+        self.title("Processamento e Análise de Imagens")
         self.geometry("1224x800")
         self.imagem_atual = None
         self.roi_size = 28  # Tamanho fixo da ROI de 28x28 pixels
@@ -45,36 +45,41 @@ class App(ttk.Window):
         
         self.button_recortar_roi = ttk.Button(self.label_frame, text="Recortar Roi", command=self.recortar_roi, bootstyle="dark", width=15)
         self.button_recortar_roi.grid(row=0, column=3, padx=10, pady=5)
-        
-        self.button_binarizar = ttk.Button(self.label_frame, text="Binarizar", command=self.binarizar_imagem, bootstyle="dark", width=15)
-        self.button_binarizar.grid(row=0, column=4, padx=10, pady=5)
-        
+
         # Frame de imagem abaixo do frame superior
-        self.imagem_frame = ttk.Labelframe(self, text="Exibir Imagens", bootstyle="dark", padding=5, width=500, height=500)
+        self.imagem_frame = ttk.Labelframe(self, text="Exibir Imagens", bootstyle="dark", width=500, height=500)
         self.imagem_frame.grid(row=3, column=0, padx=10, pady=5, sticky="nsew")
-        self.imagem_frame.grid_propagate(False)  # Desativa o redimensionamento automático
-        
+        self.imagem_frame.grid_propagate(False)        
 
         # Frame para exibir as rois
-        self.novo_frame = ttk.Labelframe(self, text="Menu Roi", bootstyle="dark", padding=20, width= 500, height=500)
-        self.novo_frame.grid(row=3, column=1, padx=10, pady=5, sticky="nsew")
-        self.novo_frame.grid_propagate(False)  # Desativa o redimensionamento automático
+        self.menu_roi_frame = ttk.Labelframe(self, text="Menu Roi", bootstyle="dark", width=500, height=500)
+        self.menu_roi_frame.grid(row=3, column=1, padx=10, pady=5, sticky="nsew")
+        self.menu_roi_frame.grid_propagate(False)
+    
+        self.menu_roi_frame.columnconfigure(0, weight=1)
+        self.menu_roi_frame.rowconfigure(0, weight=1)  
 
-        self.roi_frame = ttk.Labelframe(self.novo_frame, text="Roi", bootstyle="dark", width=500, height=500)
-        self.roi_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        self.roi_frame = ttk.Frame(self.menu_roi_frame)
+        self.roi_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew", columnspan=3)
+
         
-        # Conteúdo dentro do roi_frame, centralizado
-        self.label_roi = ttk.Label(self.roi_frame, text="Conteúdo da ROI") 
-        self.label_roi.pack(expand=True)  # Expande o conteúdo para centralizar
+        # Controle de Tamanho para ajustar o figsize
+        self.figsize_scale = tk.Scale(self.menu_roi_frame, from_=1, to=6, resolution=0.8, orient=tk.HORIZONTAL)
+        self.figsize_scale.set(1) 
+        self.figsize_scale.grid(row=1, column=0, padx=10, pady=10, sticky="ew",columnspan=3)
+
+        # Botão para aplicar o tamanho de visualização
+        self.button_aplicar_tamanho = ttk.Button(self.menu_roi_frame, text="Aplicar Zoom", command=self.atualizar_tamanho, bootstyle="dark", width=15)
+        self.button_aplicar_tamanho.grid(row=2, column=0, padx=10, pady=10,columnspan=3)
         
-        self.roi_binarizada= ttk.Label(self.novo_frame, text="Binarizada")
-        self.roi_binarizada.grid(row=0, column=1, columnspan=2, sticky="w", padx=20, pady=20)
+        # Botão para calcular HI
+        self.button_salvar_roi = ttk.Button(self.menu_roi_frame, text="Calcular HI", command=self.calcular_indice_hepatorenal, bootstyle="dark", width=15)
+        self.button_salvar_roi.grid(row=3, column=0, padx=10, pady=10, columnspan=1)
         
-        self.button_teste = ttk.Button(self.novo_frame, text="Histograma Roi", command=lambda:self.exibir_histograma(self.imagem_atual))
-        self.button_teste.grid(row=2, column=0, padx=5, pady=5)
+        # Botão para salvar a ROI do fígado
+        self.button_salvar_roi = ttk.Button(self.menu_roi_frame, text="Salvar ROI", command=self.salvar_roi_figado_selecionado, bootstyle="dark", width=15)
+        self.button_salvar_roi.grid(row=3, column=1, padx=10, pady=10,columnspan=2)
         
-        self.button_teste = ttk.Button(self.novo_frame, text="Calcular Hu", command=self.momento_hu)
-        self.button_teste.grid(row=2, column=0, padx=5, pady=5)
         
         # Frame à direita para operações
         self.label_frame_direita = ttk.Labelframe(self, text="Operações", bootstyle="dark", padding=20)
@@ -101,8 +106,8 @@ class App(ttk.Window):
         self.imagens_pacientes = {}
 
         # Configuração de redimensionamento das colunas
-        self.columnconfigure(0, weight=2)  # O frame de imagem ocupa mais espaço
-        self.columnconfigure(1, weight=1)
+        self.columnconfigure(0, weight=1)  # O frame de imagem ocupa mais espaço
+        self.columnconfigure(1, weight=2)
         self.columnconfigure(2, weight=1)
         self.rowconfigure(3, weight=1)
         
@@ -220,6 +225,8 @@ class App(ttk.Window):
 
 
     def recortar_roi(self):
+        
+        self.rois = []
         # Função de callback para a seleção de ROI com tamanho fixo de 28x28
         def onselect(eclick, erelease):
             x_center = int(eclick.xdata)
@@ -236,24 +243,13 @@ class App(ttk.Window):
             y_start = max(0, y_end - self.roi_size)
 
             # Recorta a ROI e habilita o botão de salvar
-            self.roi = self.imagem_atual[y_start:y_end, x_start:x_end]
+            roi = self.imagem_atual[y_start:y_end, x_start:x_end]
+            self.rois.append(roi)
 
-            # Limpa o frame de qualquer gráfico anterior
-            for widget in self.roi_frame.winfo_children():
-                widget.destroy()
-
-            # Mostra a ROI no Matplotlib dentro do frame_roi
-            fig, ax = plt.subplots(figsize=(1, 1), dpi=28)
-            ax.imshow(self.roi, cmap='gray', interpolation='nearest')
-            ax.axis('off')
-            fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
-
-            # Adiciona o gráfico ao canvas do Tkinter
-            canvas = FigureCanvasTkAgg(fig, master=self.roi_frame)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-            
-            plt.close(fig)
+    
+            if len(self.rois) == 2:
+                self.exibir_rois()
+                
 
         # Exibe a imagem para seleção de ROI
         fig, ax = plt.subplots()
@@ -265,17 +261,99 @@ class App(ttk.Window):
         plt.show()
 
 
-    def salvar_roi(self):
-        if self.roi is not None:
-            #Caminho para salvar a roi
-            output_path = "roi_image.png"
-            fig, ax = plt.subplots(figsize=(1,1), dpi=28)
-            ax.imshow(self.roi, cmap='gray',interpolation='nearest')
+    def atualizar_tamanho(self):
+        # Obtém o valor do slider e exibe as ROIs com o novo tamanho
+        novo_tamanho = self.figsize_scale.get()
+        self.exibir_rois(figsize=(novo_tamanho, novo_tamanho))
+        
+    def exibir_rois(self, figsize=(1, 1)):
+        # Limpa o conteúdo anterior do roi_frame antes de exibir as novas ROIs
+        for widget in self.roi_frame.winfo_children():
+            widget.destroy()
+            
+        # Configura o layout do frame de ROIs para centralizar
+        self.roi_frame.grid_columnconfigure(0, weight=1)
+        self.roi_frame.grid_columnconfigure(1, weight=1)
+        
+        # Exibe as duas ROIs no Tkinter com figsize ajustável
+        for i, roi in enumerate(self.rois):
+            frame = ttk.Labelframe(self.roi_frame, text=f"ROI {i + 1}", bootstyle="dark")
+            frame.grid(row=0, column=i, padx=10, pady=10, sticky="nsew")
+
+            # Exibe a ROI com o figsize ajustado
+            fig, ax = plt.subplots(figsize=figsize, dpi=24)
+            ax.imshow(roi, cmap='gray')
             ax.axis('off')
             fig.subplots_adjust(left=0, right=1, top=1, bottom=0)
-            fig.savefig(output_path, dpi=28, bbox_inches='tight', pad_inches=0)
+
+            # Adiciona ao canvas do Tkinter
+            canvas = FigureCanvasTkAgg(fig, master=frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
             plt.close(fig)
+
+
+    def calcular_indice_hepatorenal(self):
+        if len(self.rois) < 2:
+            messagebox.showerror("Erro", "Por favor, selecione as ROIs do fígado e do rim.")
+            return
+
+        roi_figado = self.rois[0]
+        roi_rim = self.rois[1]
+
+        # Calcula as médias de tons de cinza
+        media_figado = np.mean(roi_figado)
+        media_rim = np.mean(roi_rim)
+
+        # Calcula o índice hepatorenal (HI)
+        if media_rim != 0:
+            indice_hepatorenal = media_figado / media_rim
+            messagebox.showinfo("Índice Hepatorenal", f"HI = {indice_hepatorenal:.2f}")
+            return indice_hepatorenal
+        else:
+            messagebox.showerror("Erro", "A média da ROI do rim é zero, não é possível calcular o índice.")
+            return None
+
             
+    def salvar_roi_figado_selecionado(self):
+        try:
+            numero_paciente = int(self.combo_paciente.get().split()[-1]) - 1  # Ajuste para o índice do paciente
+            numero_imagem = int(self.combo_imagens.get().split()[-1]) - 1  # Ajuste para o índice da imagem
+        except ValueError:
+            messagebox.showerror("Erro", "Por favor, selecione um paciente e uma imagem válidos.")
+            return
+
+        # Chama a função para ajustar e salvar a ROI do fígado
+        self.ajustar_e_salvar_roi_figado(numero_paciente, numero_imagem)
+    
+    def ajustar_e_salvar_roi_figado(self, numero_paciente, numero_imagem):
+        
+        indice_hepatorenal = self.calcular_indice_hepatorenal()
+        
+        if indice_hepatorenal is None:
+            messagebox.showerror("Erro", "Não foi possivel calcular o HI")
+            
+        roi_figado = self.rois[0]
+
+        #print("Matriz original da ROI do fígado:")
+        #print(roi_figado)
+            
+        # Ajusta os tons de cinza da ROI do fígado
+        roi_ajustada = roi_figado * indice_hepatorenal
+        roi_ajustada = np.clip(roi_ajustada, 0, 255)  # Garante que os valores estejam entre 0 e 255
+        roi_ajustada = np.round(roi_ajustada).astype(np.uint8)  # Arredonda e converte para uint8
+
+        # Imprime a matriz ajustada da ROI do fígado
+        #print("Matriz ajustada da ROI do fígado:")
+        #print(roi_ajustada)
+
+        # Define o caminho e o nome do arquivo
+        nome_arquivo = f"ROI_{numero_paciente:02d}_{numero_imagem}.png"
+        caminho_arquivo = os.path.join("pasta_rois", nome_arquivo)  # Substitua 'diretorio_destino' pelo seu diretório de destino
+        # Salva a imagem
+        Image.fromarray(roi_ajustada).save(caminho_arquivo)
+        messagebox.showinfo("Salvo", f"Imagem salva como {nome_arquivo} em {caminho_arquivo}")            
+              
 
     def carregar_roi(self):
         atual_dir = os.getcwd()
@@ -287,20 +365,7 @@ class App(ttk.Window):
         if caminho_imagem:
             self.imagem_atual = np.array(Image.open(caminho_imagem).convert("L"))
             self.exibir_roi_no_frame()
-            
-            
-    def exibir_roi_no_frame(self):        
-        # Cria a figura do Matplotlib e insere a imagem
-        fig, ax = plt.subplots(figsize=(1, 1), dpi=100)
-        ax.imshow(self.imagem_atual, cmap="gray")
-        ax.axis('off')  # Esconde os eixos
 
-        # Adiciona a figura ao canvas do Tkinter
-        canvas = FigureCanvasTkAgg(fig, master=self.label_roi)
-        canvas.draw()
-        canvas.get_tk_widget().pack()
-        
-        plt.close(fig)
 
 
     def exibir_histograma(self, imagem):
@@ -318,9 +383,6 @@ class App(ttk.Window):
  
         else:
             print("Nenhuma imagem para exibir o histograma")
-
-    def on_click(self):
-        self.label.config(text="Botão Clicado!")
 
     def on_close(self):
         self.destroy()  # Fecha a janela do Tkinter
