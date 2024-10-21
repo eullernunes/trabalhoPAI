@@ -8,6 +8,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import seaborn as sns
 from skimage.feature import graycomatrix, graycoprops
+from skimage.measure import shannon_entropy
 from ttkbootstrap.constants import *
 from PIL import Image, ImageTk
 from tkinter import filedialog, messagebox
@@ -98,7 +99,7 @@ class App(ttk.Window):
         self.button_calcular_hu.grid(row=4, column=0, padx=10, pady=5, sticky="ew")
         self.button_calcular_hu.grid_forget()
 
-        self.button_calcular_glcm = ttk.Button(self.menu_roi_frame, text="Calcular GLCM", command=self.processar_roi, bootstyle="dark")
+        self.button_calcular_glcm = ttk.Button(self.menu_roi_frame, text="Calcular GLCM", command=self.calcular_glcm, bootstyle="dark")
         self.button_calcular_glcm.grid(row=4, column=1, padx=10, pady=5, sticky="ew")
         self.button_calcular_glcm.grid_forget()
         
@@ -241,7 +242,6 @@ class App(ttk.Window):
 
     def binarizar_imagem(self):
             if self.roi is not None:
-                print("entrou")
                 # Aplicar adaptive threshold para binarização adaptativa
                 self.roi_binarizada = cv2.adaptiveThreshold(self.roi, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                         cv2.THRESH_BINARY, 11, 2)
@@ -366,9 +366,9 @@ class App(ttk.Window):
         else:
             messagebox.showerror("Erro", "A média da ROI do rim é zero, não é possível calcular o índice.")
             return None
-    
-    def calcular_glcm(self, distancias=[1, 2, 4, 8], angulos=[0, np.pi/2, np.pi, 3*np.pi/2]):
-         # Verifica se a ROI é binarizada
+
+    def calcular_glcm(self, distancias=[1, 2, 4, 8], angulos=[0, np.pi / 2, np.pi, 3 * np.pi / 2]):
+        # Verifica se a ROI é binarizada
         if self.roi.dtype != np.uint8:
             self.roi = (self.roi * 255).astype(np.uint8)
 
@@ -377,20 +377,26 @@ class App(ttk.Window):
         for distancia in distancias:
             for angulo in angulos:
                 # Calcule a GLCM
-                glcm = graycomatrix(self.roi, [distancia], [angulo],  symmetric=True, normed=True)
+                glcm = graycomatrix(self.roi, [distancia], [angulo], symmetric=True, normed=True)
 
                 # Calcule propriedades da GLCM
                 glcm_props = {
-                    'contrast': graycoprops(glcm, 'contrast')[0, 0],
-                    'dissimilarity': graycoprops(glcm, 'dissimilarity')[0, 0],
                     'homogeneity': graycoprops(glcm, 'homogeneity')[0, 0],
                     'energy': graycoprops(glcm, 'energy')[0, 0],
-                    'correlation': graycoprops(glcm, 'correlation')[0, 0],
-                    'ASM': graycoprops(glcm, 'ASM')[0, 0]  # Angular Second Moment
                 }
+                # Obtém ângulo em graus
+                angulo_graus = angulo * (180 / np.pi)
+                glcm_normalized = glcm[:, :, 0]  # A GLCM normalizada está na primeira camada
+                glcm_normalized = glcm_normalized / np.sum(glcm_normalized)  # Normaliza
+                entropy_value = -np.sum(glcm_normalized * np.log(glcm_normalized + 1e-10))  # +1e-10 para evitar log(0)
+                angulo_graus = angulo * (180 / np.pi)
 
-                # Armazena os resultados
-                key = f'Distância: {distancia}, Ângulo: {angulo * (180/np.pi)}°'
+                # Imprime as características com distância, ângulo, homogeneidade e entropia
+                print(f'Distância: {distancia}, Ângulo: {angulo_graus:.2f}° - '
+                      f'Homogeneidade: {glcm_props["homogeneity"]:.4f}, '
+                      f'Entropia: {entropy_value:.4f}')
+
+                key = f'Distância: {distancia}, Ângulo: {angulo_graus:.2f}°'
                 glcm_results[key] = (glcm, glcm_props)
 
         return glcm_results
