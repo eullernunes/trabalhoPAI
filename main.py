@@ -271,7 +271,7 @@ class App(ttk.Window):
             widget.destroy()
             
         self.rois = []
-
+        self.coordenadas_rois = []
         # Função de callback para a seleção de ROI com tamanho fixo de 28x28
         def onselect(eclick, erelease):
             x_center = int(eclick.xdata)
@@ -294,8 +294,8 @@ class App(ttk.Window):
                 self.rois.clear()
 
             self.rois.append(roi)
-            self.exibir_rois()            
-
+            self.exibir_rois()
+            self.coordenadas_rois.append((x_start, y_start))
         # Exibe a imagem para seleção de ROI
         fig, ax = plt.subplots()
         ax.imshow(self.imagem_atual, cmap='gray')
